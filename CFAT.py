@@ -26,7 +26,7 @@ def predict_load(D, t, fc, fal):
         return 0.0
     
     Ac = (np.pi/4) * (D - 2*t)**2
-    Aal = (np.pi/4) * D**2 - Ac
+    Aal = (np.pi/4) * (D**2 - (D - 2*t)**2)
     
     Pc_f = (fc * Ac / 1000)   # Concrete contribution component
     Pal_f = (fal * Aal / 1000) # Aluminium contribution component
