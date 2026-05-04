@@ -25,6 +25,7 @@ def predict_load(D, t, fc, fal):
     if D <= 2 * t + 5: # Basic geometric feasibility check
         return 0.0
     
+    # Corrected Geometry: Explicit hollow tube formula
     Ac = (np.pi/4) * (D - 2*t)**2
     Aal = (np.pi/4) * (D**2 - (D - 2*t)**2)
     
@@ -77,8 +78,10 @@ if section == "Prediction":
 
     if st.button("Calculate Load Capacity"):
         Pu = predict_load(D, t, fc, fal)
-        Ac  = np.pi/4 * (D - 2*t)**2
-        Aal = np.pi/4 * (D**2 - Ac)
+        
+        # Consistent Geometry Logic
+        Ac = (np.pi/4) * (D - 2*t)**2
+        Aal = (np.pi/4) * (D**2 - (D - 2*t)**2)
 
         vol_c = Ac / 1e6 * (H/1000)
         vol_a = Aal / 1e6 * (H/1000)
@@ -93,7 +96,7 @@ if section == "Prediction":
 
         st.markdown(f"""
         ### Design Summary
-        | Parameter                     | Value           | Unit    |
+        | Parameter                      | Value           | Unit    |
         |-------------------------------|-----------------|---------|
         | Diameter (D)                  | {D:.2f}         | mm      |
         | Thickness (t)                 | {t:.2f}         | mm      |
@@ -152,8 +155,11 @@ else:
         def _evaluate(self, x, out, *args, **kwargs):
             D, t, fc, fal = x
             Pu = predict_load(D, t, fc, fal)
-            Ac  = np.pi/4 * (D - 2*t)**2 / 1e6
-            Aal = (np.pi/4 * D**2 - np.pi/4 * (D - 2*t)**2) / 1e6
+            
+            # Corrected Geometry for Evaluator
+            Ac = (np.pi/4) * (D - 2*t)**2 / 1e6
+            Aal = (np.pi/4 * (D**2 - (D - 2*t)**2)) / 1e6
+            
             vol_c, vol_a = Ac * (height/1000), Aal * (height/1000)
             mass_c, mass_a = vol_c * density['Concrete'], vol_a * density['Aluminium']
             
@@ -161,7 +167,6 @@ else:
             cost = mass_c * get_range_value(c_cost, fc) + mass_a * al_cost
             
             out["F"] = [co2, cost]
-            # Constraints: Target Load, Max Carbon, Max Cost
             out["G"] = [
                 target_load - Pu,
                 co2 - max_carbon,
@@ -169,7 +174,7 @@ else:
             ]
 
     if st.button("Run NSGA-II Optimisation"):
-        with st.spinner("Running NSGA-II (120 individuals × 120 generations)..."):
+        with st.spinner("Running NSGA-II..."):
             res = minimize(CFATProblem(), NSGA2(pop_size=120), ('n_gen', 120), seed=42)
 
         if res.F.size > 0:
@@ -178,9 +183,11 @@ else:
             best_idx = np.argmin(np.sum(norm**2, axis=1))
             D_opt, t_opt, fc_opt, fal_opt = res.X[best_idx]
 
+            # Re-calculating with explicit logic for the table display
             Pu_opt = predict_load(D_opt, t_opt, fc_opt, fal_opt)
-            Ac_opt  = np.pi/4 * (D_opt - 2*t_opt)**2
-            Aal_opt = np.pi/4 * (D_opt**2 - Ac_opt)
+            Ac_opt  = (np.pi/4) * (D_opt - 2*t_opt)**2
+            Aal_opt = (np.pi/4) * (D_opt**2 - (D_opt - 2*t_opt)**2)
+            
             vol_c_opt = Ac_opt / 1e6 * (height/1000)
             vol_a_opt = Aal_opt / 1e6 * (height/1000)
             mass_c_opt, mass_a_opt = vol_c_opt * density['Concrete'], vol_a_opt * density['Aluminium']
@@ -191,7 +198,7 @@ else:
             st.success("Optimisation Completed Successfully!")
             st.markdown(f"""
             ### Optimal CFAT Design
-            | Parameter                        | Value             | Unit    |
+            | Parameter                         | Value               | Unit    |
             |----------------------------------|-------------------|---------|
             | **Diameter (D)**                 | {D_opt:.2f}       | mm      |
             | **Thickness (t)**                | {t_opt:.2f}       | mm      |
@@ -205,7 +212,6 @@ else:
             | **Total Material Cost**          | ${cost_opt:.2f}   | USD     |
             """)
 
-            # Pareto Plot
             fig, ax = plt.subplots(figsize=(7.5, 5))
             ax.scatter(F[:,0], F[:,1], c='lightblue', edgecolor='navy', alpha=0.7, s=60)
             ax.scatter(carbon_opt, cost_opt, c='red', s=200, label='Selected solution', zorder=5)
@@ -216,31 +222,15 @@ else:
             ax.grid(True, alpha=0.3)
             st.pyplot(fig)
         else:
-            st.error("No feasible solution found. Try increasing target tolerances or constraints.")
+            st.error("No feasible solution found.")
 
-# ------------------------------------------------------------------
-# Research Footer & RDSS Context
-# ------------------------------------------------------------------
 st.divider()
 st.markdown("""
-    **Notes**: 
-    1. This application predicts the axial load capacity of concrete filled aluminium tube (CFAT) columns using a distilled symbolic equation from TabPFN.  
-    2. The model was trained on a curated dataset of experimental specimens with varying material strengths and configurations.  
-    3. Multi-objective optimisation is incorporated to recommend sustainable and cost-effective design parameters that meet target structural performance.  
-""")
-
-st.markdown("""
-    **References**: 
-    1. Deb K, Pratap A, Agarwal S, Meyarivan T. A fast and elitist multiobjective genetic algorithm: NSGA-II. IEEE Trans Evol Computat 2002;6:182–97. https://doi.org/10.1109/4235.996017.
-    2. Hollmann N, Müller S, Eggensperger K, Hutter F. TabPFN: A Transformer That Solves Small Tabular Classification Problems in a Second 2022. https://doi.org/10.48550/ARXIV.2207.01848.
+    **Notes**: This application predicts the axial load capacity of CFAT columns using a distilled symbolic equation from TabPFN.
 """)
 
 footer_html = """
-<style>
-.footer { position: fixed; left: 0; bottom: 0; width: 100%; background-color: #f1f1f1; text-align: center; padding: 10px; font-size: 12px; color: #6c757d; }
-</style>
-<div class="footer">
-    <p>© 2026 | Temitope E. Dada, Silas E. Oluwadahunsi, Oluwafemi Omotayo, Charles K.S. Moy and Yao Sun | For Queries: <a href="mailto:temitope.dada@teaktecheng.com">temitope.dada@teaktecheng.com</a></p>
-</div>
+<style>.footer { position: fixed; left: 0; bottom: 0; width: 100%; background-color: #f1f1f1; text-align: center; padding: 10px; font-size: 12px; color: #6c757d; }</style>
+<div class="footer"><p>© 2026 | Temitope E. Dada et al. | For Queries: <a href="mailto:temitope.dada@teaktecheng.com">temitope.dada@teaktecheng.com</a></p></div>
 """
 st.markdown(footer_html, unsafe_allow_html=True)
