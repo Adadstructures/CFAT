@@ -10,19 +10,19 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # --- App Configuration ---
-st.set_page_config(page_title="CFAT RDSS Framework", layout="centered")
+st.set_page_config(page_title="CFAT Predictor & Optimiser", layout="centered")
 st.title("Concrete-Filled Aluminium Tube (CFAT) Predictor & Optimiser")
 st.markdown("### Research Decision Support System (RDSS) Interface")
 
 # ------------------------------------------------------------------
 # 1. Distilled Symbolic Equation & Coefficients
 # ------------------------------------------------------------------
-# These coefficients were distilled from the TabPFN model for interpretability
+# Updated coefficients based on the latest research distillation
 COEFFS = {'alpha': 1.2459, 'beta': 0.7246, 'gamma': 10.3541, 'delta': 0.9563}
 
 def predict_load(D, t, fc, fal):
     """Predicts axial load capacity using the distilled symbolic equation."""
-    if D <= 2 * t + 2: # Basic geometric feasibility check
+    if D <= 2 * t + 5: # Basic geometric feasibility check
         return 0.0
     
     Ac = (np.pi/4) * (D - 2*t)**2
@@ -31,31 +31,22 @@ def predict_load(D, t, fc, fal):
     Pc_f = (fc * Ac / 1000)   # Concrete contribution component
     Pal_f = (fal * Aal / 1000) # Aluminium contribution component
     
-    # Revised physics-guided symbolic structure
+    # Physics-guided symbolic structure
     return COEFFS['alpha'] * Pal_f + (COEFFS['beta'] * (1 + COEFFS['gamma'] * ((t/D) ** COEFFS['delta'])) * Pc_f)
 
 # ------------------------------------------------------------------
-# 2. Domain of Validity Boundaries
-# ------------------------------------------------------------------
-# Limits derived from the experimental training dataset properties
-VALID_LIMITS = {
-    'D': (38.0, 700.0),
-    't': (1.6, 17.5),
-    'fc': (24.1, 110.0),
-    'fal': (70.0, 566.2)
-}
-
-# ------------------------------------------------------------------
-# 3. Sustainability & Cost Data
+# 2. Material data & LCI
 # ------------------------------------------------------------------
 default_lci = {
     'Aluminium': 8.78,
     'Concrete': {(21,30):0.135, (31,59):0.180, (60,99):0.225, (100,131):0.325}
 }
+
 default_cost = {
     'Aluminium': 4.5,
     'Concrete': {(21,30):0.125, (31,59):0.175, (60,99):0.225, (100,131):0.30}
 }
+
 density = {'Aluminium': 2700, 'Concrete': 2400}
 
 def get_range_value(dct, fc):
@@ -65,65 +56,54 @@ def get_range_value(dct, fc):
     return list(dct.values())[-1]
 
 # ------------------------------------------------------------------
-# 4. Sidebar Navigation
+# 3. Sidebar Navigation
 # ------------------------------------------------------------------
-section = st.sidebar.selectbox("Application Mode", ["Prediction", "Optimisation"])
+section = st.sidebar.selectbox("Mode", ["Prediction", "Optimisation"])
 
 # ==================================================================
-# PREDICTION MODE (With Real-Time Validation)
+# PREDICTION MODE
 # ==================================================================
 if section == "Prediction":
     st.subheader("Predict Axial Load Capacity")
-    st.info("Input parameters are validated in real-time against the experimental domain.")
 
     col1, col2 = st.columns(2)
     with col1:
-        D = st.number_input("Outer Diameter (D) [mm]", 38.0, 800.0, 200.0)
-        if D > VALID_LIMITS['D'][1] or D < VALID_LIMITS['D'][0]:
-            st.warning(f"⚠️ Diameter exceeds validated range ({VALID_LIMITS['D'][0]}-{VALID_LIMITS['D'][1]}mm)")
-
-        t = st.number_input("Tube Thickness (t) [mm]", 1.0, 25.0, 5.0)
-        if t > VALID_LIMITS['t'][1] or t < VALID_LIMITS['t'][0]:
-            st.warning(f"⚠️ Thickness exceeds validated range ({VALID_LIMITS['t'][0]}-{VALID_LIMITS['t'][1]}mm)")
-
-        H = st.number_input("Height (H) [mm]", 100.0, 2000.0, 600.0)
-
+        D  = st.number_input("Outer Diameter (mm)", 38.0, 700.0, 200.0)
+        t  = st.number_input("Tube Thickness (mm)", 1.6, 17.5, 5.0)
+        H  = st.number_input("Height (mm)", 114.0, 1620.0, 600.0)
     with col2:
-        fc = st.number_input("Concrete Strength (fc) [MPa]", 20.0, 150.0, 56.0)
-        if fc > VALID_LIMITS['fc'][1] or fc < VALID_LIMITS['fc'][0]:
-            st.warning(f"⚠️ Concrete strength exceeds validated range ({VALID_LIMITS['fc'][0]}-{VALID_LIMITS['fc'][1]}MPa)")
-
-        fal = st.number_input("Aluminium Strength (fal) [MPa]", 50.0, 600.0, 240.0)
-        if fal > VALID_LIMITS['fal'][1] or fal < VALID_LIMITS['fal'][0]:
-            st.warning(f"⚠️ Aluminium yield exceeds validated range ({VALID_LIMITS['fal'][0]}-{VALID_LIMITS['fal'][1]}MPa)")
-
-    st.divider()
+        fc  = st.number_input("Concrete Strength fc (MPa)", 24.1, 110.0, 56.0)
+        fal = st.number_input("Aluminium Yield Strength fal (MPa)", 70.0, 566.2, 240.0)
 
     if st.button("Calculate Load Capacity"):
         Pu = predict_load(D, t, fc, fal)
-        
-        # Calculate environmental and cost metrics
-        Ac = (np.pi/4) * (D - 2*t)**2
-        Aal = (np.pi/4) * D**2 - Ac
-        vol_c = (Ac / 1e6) * (H / 1000)
-        vol_a = (Aal / 1e6) * (H / 1000)
-        mass_c, mass_a = vol_c * density['Concrete'], vol_a * density['Aluminium']
-        
-        co2 = mass_c * get_range_value(default_lci['Concrete'], fc) + mass_a * default_lci['Aluminium']
+        Ac  = np.pi/4 * (D - 2*t)**2
+        Aal = np.pi/4 * (D**2 - Ac)
+
+        vol_c = Ac / 1e6 * (H/1000)
+        vol_a = Aal / 1e6 * (H/1000)
+        mass_c = vol_c * density['Concrete']
+        mass_a = vol_a * density['Aluminium']
+
+        co2  = mass_c * get_range_value(default_lci['Concrete'], fc)  + mass_a * default_lci['Aluminium']
         cost = mass_c * get_range_value(default_cost['Concrete'], fc) + mass_a * default_cost['Aluminium']
 
-        # Results Display
-        st.success(f"**Predicted Axial Load Capacity (Pu):** {Pu:,.2f} kN")
-        st.info(f"**Reliability Interval (95%):** {Pu*0.95:,.0f} – {Pu*1.05:,.0f} kN")
-        
+        st.success(f"Predicted Axial Load Capacity: {Pu:,.2f} kN")
+        st.write(f"95% approximate interval: **{Pu*0.95:,.0f} – {Pu*1.05:,.0f} kN**")
+
         st.markdown(f"""
         ### Design Summary
-        | Metric | Value | Unit |
-        |---|---|---|
-        | Carbon Footprint | {co2:.2f} | kg CO₂e |
-        | Material Cost | ${cost:.2f} | USD |
-        | Concrete Area (Ac) | {Ac:,.0f} | mm² |
-        | Aluminium Area (Aal) | {Aal:,.0f} | mm² |
+        | Parameter                     | Value           | Unit    |
+        |-------------------------------|-----------------|---------|
+        | Diameter (D)                  | {D:.2f}         | mm      |
+        | Thickness (t)                 | {t:.2f}         | mm      |
+        | **Concrete Area (Ac)**        | {Ac:,.0f}       | mm²     |
+        | **Aluminium Area (Aal)**      | {Aal:,.0f}      | mm²     |
+        | Concrete strength (fc)        | {fc:.1f}        | MPa     |
+        | Aluminium strength (fal)      | {fal:.1f}       | MPa     |
+        | Height                        | {H:.0f}         | mm      |
+        | Carbon footprint              | {co2:.2f}       | kg CO₂e |
+        | Material cost                 | ${cost:.2f}     | USD     |
         """)
 
 # ==================================================================
@@ -131,57 +111,112 @@ if section == "Prediction":
 # ==================================================================
 else:
     st.subheader("Multi-Objective Optimisation (NSGA-II)")
-    
+
     col1, col2 = st.columns(2)
     with col1:
-        target_load = st.number_input("Target Load Capacity (kN)", 100.0, 25000.0, 4000.0)
-    with col2:
+        target_load = st.number_input("Target Load Capacity (kN)", 80.0, 25000.0, 4000.0)
         height = st.number_input("Column Height (mm)", 114.0, 1620.0, 800.0)
+    with col2:
+        max_cost   = st.number_input("Maximum Allowed Cost (USD)", 0.0, 20000.0, 1000.0)
+        max_carbon = st.number_input("Maximum Allowed Carbon (kg CO₂e)", 0.0, 20000.0, 1500.0)
 
+    use_custom = st.checkbox("Use custom LCI / Cost values")
+
+    if use_custom:
+        al_lci  = st.number_input("Aluminium LCI (kg CO₂e/kg)", value=8.78)
+        al_cost = st.number_input("Aluminium Cost (USD/kg)", value=4.5)
+        st.markdown("**Concrete — banded values**")
+        c_lci = {
+            (21,30):   st.number_input("Concrete LCI 21–30 MPa",   value=0.135),
+            (31,59):   st.number_input("Concrete LCI 31–59 MPa",   value=0.180),
+            (60,99):   st.number_input("Concrete LCI 60–99 MPa",   value=0.225),
+            (100,131): st.number_input("Concrete LCI 100–131 MPa", value=0.325)
+        }
+        c_cost = {
+            (21,30):   st.number_input("Concrete Cost 21–30 MPa",   value=0.125),
+            (31,59):   st.number_input("Concrete Cost 31–59 MPa",   value=0.175),
+            (60,99):   st.number_input("Concrete Cost 60–99 MPa",   value=0.225),
+            (100,131): st.number_input("Concrete Cost 100–131 MPa", value=0.30)
+        }
+    else:
+        al_lci, al_cost = default_lci['Aluminium'], default_cost['Aluminium']
+        c_lci, c_cost   = default_lci['Concrete'],  default_cost['Concrete']
+
+    # NSGA-II Problem Definition
     class CFATProblem(ElementwiseProblem):
         def __init__(self):
-            super().__init__(n_var=4, n_obj=2, n_ieq_constr=1,
-                           xl=[VALID_LIMITS['D'][0], VALID_LIMITS['t'][0], VALID_LIMITS['fc'][0], VALID_LIMITS['fal'][0]],
-                           xu=[VALID_LIMITS['D'][1], VALID_LIMITS['t'][1], VALID_LIMITS['fc'][1], VALID_LIMITS['fal'][1]])
+            super().__init__(n_var=4, n_obj=2, n_ieq_constr=3,
+                           xl=[38.0, 1.6, 24.1, 70.0],
+                           xu=[700.0, 17.5, 110.0, 566.2])
 
         def _evaluate(self, x, out, *args, **kwargs):
             D, t, fc, fal = x
             Pu = predict_load(D, t, fc, fal)
-            Ac = np.pi/4 * (D - 2*t)**2 / 1e6
+            Ac  = np.pi/4 * (D - 2*t)**2 / 1e6
             Aal = (np.pi/4 * D**2 - np.pi/4 * (D - 2*t)**2) / 1e6
-            mass_c = (Ac * height/1000) * density['Concrete']
-            mass_a = (Aal * height/1000) * density['Aluminium']
+            vol_c, vol_a = Ac * (height/1000), Aal * (height/1000)
+            mass_c, mass_a = vol_c * density['Concrete'], vol_a * density['Aluminium']
             
-            co2 = mass_c * get_range_value(default_lci['Concrete'], fc) + mass_a * default_lci['Aluminium']
-            cost = mass_c * get_range_value(default_cost['Concrete'], fc) + mass_a * default_cost['Aluminium']
+            co2  = mass_c * get_range_value(c_lci, fc)  + mass_a * al_lci
+            cost = mass_c * get_range_value(c_cost, fc) + mass_a * al_cost
             
             out["F"] = [co2, cost]
-            out["G"] = [target_load - Pu] # Constraint: Pu must be >= target_load
+            # Constraints: Target Load, Max Carbon, Max Cost
+            out["G"] = [
+                target_load - Pu,
+                co2 - max_carbon,
+                cost - max_cost
+            ]
 
     if st.button("Run NSGA-II Optimisation"):
-        with st.spinner("Executing Evolutionary Search..."):
-            res = minimize(CFATProblem(), NSGA2(pop_size=100), ('n_gen', 100), seed=42)
-        
+        with st.spinner("Running NSGA-II (120 individuals × 120 generations)..."):
+            res = minimize(CFATProblem(), NSGA2(pop_size=120), ('n_gen', 120), seed=42)
+
         if res.F.size > 0:
-            # Select balanced solution (L2 Norm on normalized objectives)
-            norm_F = res.F / res.F.max(axis=0)
-            best_idx = np.argmin(np.sum(norm_F**2, axis=1))
-            X_opt = res.X[best_idx]
-            
-            st.success("Optimisation Completed!")
-            st.info("🛡️ **Verified Design:** This configuration is strictly within the validated experimental domain.")
-            
-            st.write(f"**Optimal Solution:** D={X_opt[0]:.1f}mm, t={X_opt[1]:.1f}mm, fc={X_opt[2]:.1f}MPa, fal={X_opt[3]:.1f}MPa")
-            st.write(f"**Performance:** Load={predict_load(*X_opt):,.1f} kN | Carbon={res.F[best_idx,0]:.1f} kg | Cost=${res.F[best_idx,1]:.2f}")
+            F = res.F
+            norm = F / F.max(axis=0)
+            best_idx = np.argmin(np.sum(norm**2, axis=1))
+            D_opt, t_opt, fc_opt, fal_opt = res.X[best_idx]
+
+            Pu_opt = predict_load(D_opt, t_opt, fc_opt, fal_opt)
+            Ac_opt  = np.pi/4 * (D_opt - 2*t_opt)**2
+            Aal_opt = np.pi/4 * (D_opt**2 - Ac_opt)
+            vol_c_opt = Ac_opt / 1e6 * (height/1000)
+            vol_a_opt = Aal_opt / 1e6 * (height/1000)
+            mass_c_opt, mass_a_opt = vol_c_opt * density['Concrete'], vol_a_opt * density['Aluminium']
+
+            carbon_opt = mass_c_opt * get_range_value(c_lci, fc_opt) + mass_a_opt * al_lci
+            cost_opt   = mass_c_opt * get_range_value(c_cost, fc_opt) + mass_a_opt * al_cost
+
+            st.success("Optimisation Completed Successfully!")
+            st.markdown(f"""
+            ### Optimal CFAT Design
+            | Parameter                        | Value             | Unit    |
+            |----------------------------------|-------------------|---------|
+            | **Diameter (D)**                 | {D_opt:.2f}       | mm      |
+            | **Thickness (t)**                | {t_opt:.2f}       | mm      |
+            | **Concrete Area (Ac)**           | {Ac_opt:,.0f}     | mm²     |
+            | **Aluminium Area (Aal)**         | {Aal_opt:,.0f}    | mm²     |
+            | **Concrete strength (fc)**       | {fc_opt:.2f}      | MPa     |
+            | **Aluminium strength (fal)**     | {fal_opt:.1f}     | MPa     |
+            | **Height**                       | {height:.0f}      | mm      |
+            | **Predicted Load Capacity**      | {Pu_opt:,.0f}     | kN      |
+            | **Total Carbon Footprint**       | {carbon_opt:.1f}  | kg CO₂e |
+            | **Total Material Cost**          | ${cost_opt:.2f}   | USD     |
+            """)
 
             # Pareto Plot
-            fig, ax = plt.subplots()
-            ax.scatter(res.F[:,0], res.F[:,1], alpha=0.6, label="Pareto Candidates")
-            ax.scatter(res.F[best_idx,0], res.F[best_idx,1], color='red', s=100, label="Selected Design")
+            fig, ax = plt.subplots(figsize=(7.5, 5))
+            ax.scatter(F[:,0], F[:,1], c='lightblue', edgecolor='navy', alpha=0.7, s=60)
+            ax.scatter(carbon_opt, cost_opt, c='red', s=200, label='Selected solution', zorder=5)
             ax.set_xlabel("Carbon Footprint (kg CO₂e)")
-            ax.set_ylabel("Cost (USD)")
+            ax.set_ylabel("Material Cost (USD)")
+            ax.set_title("Pareto Front – Carbon vs Cost")
             ax.legend()
+            ax.grid(True, alpha=0.3)
             st.pyplot(fig)
+        else:
+            st.error("No feasible solution found. Try increasing target tolerances or constraints.")
 
 # ------------------------------------------------------------------
 # Research Footer & RDSS Context
